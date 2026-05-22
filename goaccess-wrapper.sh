@@ -4,7 +4,24 @@ CONFIG_FILE="${GOACCESS_PRESET_CONF:-/etc/goaccess-wrapper.yaml}"
 HISTORY_LOG="${GOACCESS_HISTORY_LOG:-/var/log/goaccess-wrapper.log}"
 
 # =============================
-# AUTO CONFIG YAML
+# FLAGS
+# =============================
+VHOST=""
+PRESET_EXCLUDE=""
+PRESET_INCLUDE=""
+USER_EXCLUDE=()
+USER_INCLUDE=()
+
+LIST=0
+CHECK=0
+DRY_RUN=0
+EXPLAIN=0
+
+# explain storage
+declare -A EXPLAIN_MAP
+
+# =============================
+# AUTO CONFIG
 # =============================
 create_default_config() {
   local file="$1"
@@ -24,7 +41,7 @@ presets:
       - 172.16.0.0/12
 
   office:
-    exclude:
+    include:
       - 37.179.5.219
 
   machine:
@@ -37,7 +54,7 @@ EOF
 [[ ! -f "$CONFIG_FILE" ]] && create_default_config "$CONFIG_FILE"
 
 # =============================
-# YAML PARSER (python, robust)
+# YAML LOADER
 # =============================
 load_yaml() {
 python3 - <<EOF
@@ -53,41 +70,31 @@ EOF
 CONFIG_JSON="$(load_yaml)"
 
 # =============================
-# DEPENDENCIES CHECK
+# REQUIREMENTS CHECK
 # =============================
-command -v python3 >/dev/null || {
-  echo "❌ python3 required"
-  exit 1
-}
-
-python3 -c "import yaml" 2>/dev/null || {
-  echo "❌ PyYAML required: pip install pyyaml"
-  exit 1
-}
+command -v python3 >/dev/null || { echo "python3 required"; exit 1; }
+python3 -c "import yaml" 2>/dev/null || { echo "PyYAML required"; exit 1; }
 
 # =============================
-# ARGUMENTS
+# USAGE
 # =============================
-VHOST=""
-PRESET_EXCLUDE=""
-PRESET_INCLUDE=""
-USER_EXCLUDE=()
-USER_INCLUDE=()
-LIST=0
-CHECK=0
-DRY_RUN=0
-
 usage() {
   echo "Usage:"
   echo "  -v vhost"
-  echo "  -p exclude presets (comma)"
-  echo "  -P include presets (comma)"
+  echo "  -p exclude presets"
+  echo "  -P include presets"
+  echo "  -i exclude ip"
+  echo "  -r include ip"
   echo "  --list-presets"
   echo "  --check-config"
   echo "  --dry-run"
+  echo "  --explain"
   exit 1
 }
 
+# =============================
+# ARGS
+# =============================
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v) VHOST="$2"; shift 2 ;;
@@ -98,18 +105,19 @@ while [[ $# -gt 0 ]]; do
     --list-presets) LIST=1; shift ;;
     --check-config) CHECK=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --explain) EXPLAIN=1; shift ;;
     *) usage ;;
   esac
 done
 
 # =============================
-# PRESET EXTRACTOR (python)
+# PRESET FETCH
 # =============================
-get_preset_values() {
+get_preset() {
 python3 - "$1" "$2" <<EOF
 import json, sys
-
 data = json.loads("""$CONFIG_JSON""")
+
 preset = sys.argv[1]
 ptype = sys.argv[2]
 
@@ -126,9 +134,9 @@ python3 - <<EOF
 import json
 data = json.loads("""$CONFIG_JSON""")
 
-print("AVAILABLE PRESETS:\n")
-for k,v in data["presets"].items():
-    print(f"- {k}")
+print("AVAILABLE PRESETS:")
+for k in data["presets"]:
+    print("-", k)
 EOF
 }
 
@@ -148,46 +156,65 @@ EOF
 ALL_EXCLUDE=()
 ALL_INCLUDE=()
 
-IFS=',' read -ra EX_PRESETS <<< "$PRESET_EXCLUDE"
-IFS=',' read -ra IN_PRESETS <<< "$PRESET_INCLUDE"
+IFS=',' read -ra EP <<< "$PRESET_EXCLUDE"
+IFS=',' read -ra IP <<< "$PRESET_INCLUDE"
 
-for p in "${EX_PRESETS[@]}"; do
+for p in "${EP[@]}"; do
   [[ -z "$p" ]] && continue
   while read -r ip; do
     [[ -n "$ip" ]] && ALL_EXCLUDE+=("$ip")
-  done < <(get_preset_values "$p" "exclude")
+  done < <(get_preset "$p" "exclude")
 done
 
-for p in "${IN_PRESETS[@]}"; do
+for p in "${IP[@]}"; do
   [[ -z "$p" ]] && continue
   while read -r ip; do
     [[ -n "$ip" ]] && ALL_INCLUDE+=("$ip")
-  done < <(get_preset_values "$p" "include")
+  done < <(get_preset "$p" "include")
 done
 
-# user IPs
 ALL_EXCLUDE+=("${USER_EXCLUDE[@]}")
-
 SYSTEM_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n')
 ALL_EXCLUDE+=($SYSTEM_IPS)
 
 # =============================
-# FILTERING ENGINE
+# FILTER ENGINE + EXPLAIN
 # =============================
 FINAL_EXCLUDE=()
+
+add_trace() {
+  local ip="$1"
+  local msg="$2"
+  EXPLAIN_MAP["$ip"]+="$msg"$'\n'
+}
 
 for ip in "${ALL_EXCLUDE[@]}"; do
   skip=0
 
+  # include exact
   for inc in "${ALL_INCLUDE[@]}"; do
-    [[ "$ip" == "$inc" ]] && skip=1 && break
+    if [[ "$ip" == "$inc" ]]; then
+      skip=1
+      [[ $EXPLAIN -eq 1 ]] && add_trace "$ip" "INCLUDED (exact match)"
+      break
+    fi
   done
 
+  # include CIDR
   for inc in "${ALL_INCLUDE[@]}"; do
-    [[ "$inc" == *"/"* ]] && ip_in_cidr "$ip" "$inc" && skip=1 && break
+    if [[ "$inc" == *"/"* ]]; then
+      if ip_in_cidr "$ip" "$inc"; then
+        skip=1
+        [[ $EXPLAIN -eq 1 ]] && add_trace "$ip" "INCLUDED (CIDR match $inc)"
+        break
+      fi
+    fi
   done
 
-  [[ $skip -eq 0 ]] && FINAL_EXCLUDE+=("$ip")
+  if [[ $skip -eq 0 ]]; then
+    FINAL_EXCLUDE+=("$ip")
+    [[ $EXPLAIN -eq 1 ]] && add_trace "$ip" "EXCLUDED (default rule)"
+  fi
 done
 
 # =============================
@@ -215,6 +242,23 @@ echo ""
 echo "======================================"
 
 # =============================
+# EXPLAIN MODE OUTPUT
+# =============================
+if [[ $EXPLAIN -eq 1 ]]; then
+  echo ""
+  echo "================ EXPLAIN MODE ================"
+
+  for ip in "${ALL_EXCLUDE[@]}"; do
+    echo ""
+    echo "IP: $ip"
+    echo "--------------------------------------"
+    echo -e "${EXPLAIN_MAP[$ip]}"
+  done
+
+  echo "=============================================="
+fi
+
+# =============================
 # HISTORY
 # =============================
 echo "$(date '+%F %T') ${CMD[*]}" >> "$HISTORY_LOG"
@@ -223,7 +267,7 @@ echo "$(date '+%F %T') ${CMD[*]}" >> "$HISTORY_LOG"
 # MODES
 # =============================
 [[ $LIST -eq 1 ]] && list_presets && exit 0
-[[ $CHECK -eq 1 ]] && echo "OK YAML config" && exit 0
+[[ $CHECK -eq 1 ]] && echo "OK CONFIG" && exit 0
 
 [[ $DRY_RUN -eq 1 ]] && exit 0
 
