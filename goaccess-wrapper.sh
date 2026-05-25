@@ -17,6 +17,9 @@ CHECK=0
 DRY_RUN=0
 EXPLAIN=0
 
+OUTPUT_DIR="/var/www/html"
+OUTPUT_HTML=0
+
 # explain storage
 declare -A EXPLAIN_MAP
 
@@ -54,6 +57,12 @@ EOF
 [[ ! -f "$CONFIG_FILE" ]] && create_default_config "$CONFIG_FILE"
 
 # =============================
+# REQUIREMENTS CHECK
+# =============================
+command -v python3 >/dev/null || { echo "python3 required"; exit 1; }
+python3 -c "import yaml" 2>/dev/null || { echo "PyYAML required"; exit 1; }
+
+# =============================
 # YAML LOADER
 # =============================
 load_yaml() {
@@ -70,12 +79,6 @@ EOF
 CONFIG_JSON="$(load_yaml)"
 
 # =============================
-# REQUIREMENTS CHECK
-# =============================
-command -v python3 >/dev/null || { echo "python3 required"; exit 1; }
-python3 -c "import yaml" 2>/dev/null || { echo "PyYAML required"; exit 1; }
-
-# =============================
 # USAGE
 # =============================
 usage() {
@@ -85,6 +88,7 @@ usage() {
   echo "  -P include presets"
   echo "  -i exclude ip"
   echo "  -r include ip"
+  echo "  -o output dir (default /var/www/html)"
   echo "  --list-presets"
   echo "  --check-config"
   echo "  --dry-run"
@@ -102,6 +106,11 @@ while [[ $# -gt 0 ]]; do
     -P) PRESET_INCLUDE="$2"; shift 2 ;;
     -i) USER_EXCLUDE+=("$2"); shift 2 ;;
     -r) USER_INCLUDE+=("$2"); shift 2 ;;
+    -o)
+      OUTPUT_DIR="$2"
+      OUTPUT_HTML=1
+      shift 2
+      ;;
     --list-presets) LIST=1; shift ;;
     --check-config) CHECK=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -109,6 +118,16 @@ while [[ $# -gt 0 ]]; do
     *) usage ;;
   esac
 done
+
+# =============================
+# VALIDATION
+# =============================
+if [[ $OUTPUT_HTML -eq 1 ]]; then
+  if [[ "$OUTPUT_DIR" != /* ]]; then
+    echo "ERROR: output directory must be an absolute path"
+    exit 1
+  fi
+fi
 
 # =============================
 # PRESET FETCH
@@ -174,6 +193,7 @@ for p in "${IP[@]}"; do
 done
 
 ALL_EXCLUDE+=("${USER_EXCLUDE[@]}")
+
 SYSTEM_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n')
 ALL_EXCLUDE+=($SYSTEM_IPS)
 
@@ -191,7 +211,6 @@ add_trace() {
 for ip in "${ALL_EXCLUDE[@]}"; do
   skip=0
 
-  # include exact
   for inc in "${ALL_INCLUDE[@]}"; do
     if [[ "$ip" == "$inc" ]]; then
       skip=1
@@ -200,7 +219,6 @@ for ip in "${ALL_EXCLUDE[@]}"; do
     fi
   done
 
-  # include CIDR
   for inc in "${ALL_INCLUDE[@]}"; do
     if [[ "$inc" == *"/"* ]]; then
       if ip_in_cidr "$ip" "$inc"; then
@@ -233,6 +251,20 @@ for ip in "${FINAL_EXCLUDE[@]}"; do
 done
 
 # =============================
+# OUTPUT HTML SUPPORT
+# =============================
+HTML_OUTPUT="$OUTPUT_DIR/report.html"
+
+if [[ $OUTPUT_HTML -eq 1 ]]; then
+  mkdir -p "$OUTPUT_DIR"
+  CMD+=(
+    -o "$HTML_OUTPUT"
+    #--real-time-html
+  )
+  echo "HTML OUTPUT: $HTML_OUTPUT"
+fi
+
+# =============================
 # OUTPUT
 # =============================
 echo "======================================"
@@ -241,8 +273,10 @@ printf '%q ' "${CMD[@]}"
 echo ""
 echo "======================================"
 
+[[ $OUTPUT_HTML -eq 1 ]] && echo "HTML OUTPUT: $HTML_OUTPUT"
+
 # =============================
-# EXPLAIN MODE OUTPUT
+# EXPLAIN MODE
 # =============================
 if [[ $EXPLAIN -eq 1 ]]; then
   echo ""
@@ -268,7 +302,6 @@ echo "$(date '+%F %T') ${CMD[*]}" >> "$HISTORY_LOG"
 # =============================
 [[ $LIST -eq 1 ]] && list_presets && exit 0
 [[ $CHECK -eq 1 ]] && echo "OK CONFIG" && exit 0
-
 [[ $DRY_RUN -eq 1 ]] && exit 0
 
 exec "${CMD[@]}"
