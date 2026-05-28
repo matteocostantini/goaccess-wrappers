@@ -209,6 +209,23 @@ ALL_EXCLUDE+=("${USER_EXCLUDE[@]}")
 SYSTEM_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n')
 ALL_EXCLUDE+=($SYSTEM_IPS)
 
+# External IP (only if not already present)
+EXTERNAL_IP=$(curl -s https://api.ipify.org)
+
+if [[ -n "$EXTERNAL_IP" ]]; then
+  found=0
+  for ip in "${SYSTEM_IPS[@]}"; do
+    if [[ "$ip" == "$EXTERNAL_IP" ]]; then
+      found=1
+      break
+    fi
+  done
+
+  if [[ $found -eq 0 ]]; then
+    ALL_EXCLUDE+=("$EXTERNAL_IP")
+  fi
+fi
+
 # =============================
 # FILTER ENGINE + EXPLAIN
 # =============================
