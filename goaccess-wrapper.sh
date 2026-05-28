@@ -19,6 +19,10 @@ EXPLAIN=0
 
 OUTPUT_DIR="/var/www/html"
 OUTPUT_HTML=0
+REALTIME=0
+PORT=""
+WS_URL=""
+ADDRESS="127.0.0.1"
 
 # explain storage
 declare -A EXPLAIN_MAP
@@ -93,6 +97,10 @@ usage() {
   echo "  --check-config"
   echo "  --dry-run"
   echo "  --explain"
+  echo "  --real-time-html"
+  echo "  --port <port>"
+  echo "  --ws-url <url>"
+  echo "  --address <ip>"
   exit 1
 }
 
@@ -115,6 +123,10 @@ while [[ $# -gt 0 ]]; do
     --check-config) CHECK=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --explain) EXPLAIN=1; shift ;;
+    --real-time-html) REALTIME=1; shift ;;
+    --port) PORT="$2"; shift 2 ;;
+    --ws-url) WS_URL="$2"; shift 2 ;;
+    --address) ADDRESS="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
@@ -122,7 +134,7 @@ done
 # =============================
 # VALIDATION
 # =============================
-if [[ $OUTPUT_HTML -eq 1 ]]; then
+if [[ $OUTPUT_HTML -eq 1 ]] || [[ $REALTIME -eq 1 ]] || [[ -n "$PORT" ]] || [[ -n "$WS_URL" ]]; then
   if [[ "$OUTPUT_DIR" != /* ]]; then
     echo "ERROR: output directory must be an absolute path"
     exit 1
@@ -255,12 +267,16 @@ done
 # =============================
 HTML_OUTPUT="$OUTPUT_DIR/report.html"
 
-if [[ $OUTPUT_HTML -eq 1 ]]; then
+if [[ $OUTPUT_HTML -eq 1 ]] || [[ $REALTIME -eq 1 ]] || [[ -n "$PORT" ]] || [[ -n "$WS_URL" ]]; then
+  OUTPUT_HTML=1
   mkdir -p "$OUTPUT_DIR"
-  CMD+=(
-    -o "$HTML_OUTPUT"
-    #--real-time-html
-  )
+  CMD+=(-o "$HTML_OUTPUT")
+
+  [[ $REALTIME -eq 1 ]] && CMD+=("--real-time-html")
+  [[ -n "$ADDRESS" ]] && CMD+=("--addr=$ADDRESS")
+  [[ -n "$PORT" ]] && CMD+=("--port=$PORT")
+  [[ -n "$WS_URL" ]] && CMD+=("--ws-url=$WS_URL")
+
   echo "HTML OUTPUT: $HTML_OUTPUT"
 fi
 
