@@ -273,11 +273,29 @@ done
 # =============================
 LOG_PATH="/var/www/${VHOST}/log/access.log"
 
+# =========================
+# Configurazione formati
+# =========================
+
+# Formato COMBINED (access.log classico)
+LOG_FORMAT_COMBINED='%h %^[%d:%t %^] "%r" %s %b "%R" "%u"'
+
+# Formato per other_vhosts_access.log (multi vhost)
+LOG_FORMAT_VHOST='%v:%p %h %^[%d:%t %^] "%r" %s %b "%R" "%u"'
+
+# Formati data/ora (comuni)
+DATE_FORMAT='%d/%b/%Y'
+TIME_FORMAT='%T'
+
 CMD=(goaccess -c "$LOG_PATH"
-  --log-format=COMBINED
   --geoip-database=/usr/share/GeoIP/GeoLite2-City.mmdb
   --geoip-database=/usr/share/GeoIP/GeoLite2-ASN.mmdb
 )
+
+# CMD+=("--log-format=COMBINED")
+CMD+=("--log-format=$LOG_FORMAT_COMBINED")
+CMD+=("--date-format=$DATE_FORMAT")
+CMD+=("--time-format=$TIME_FORMAT")
 
 for ip in "${FINAL_EXCLUDE[@]}"; do
   CMD+=("--exclude-ip=$ip")
