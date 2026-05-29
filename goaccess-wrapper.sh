@@ -23,6 +23,7 @@ REALTIME=0
 PORT=""
 WS_URL=""
 ADDRESS="127.0.0.1"
+HTML_REPORT_TITLE=""
 
 # explain storage
 declare -A EXPLAIN_MAP
@@ -109,7 +110,10 @@ usage() {
 # =============================
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -v) VHOST="$2"; shift 2 ;;
+    -v) 
+      VHOST="$2";
+      HTML_REPORT_TITLE="$2";
+      shift 2 ;;
     -p) PRESET_EXCLUDE="$2"; shift 2 ;;
     -P) PRESET_INCLUDE="$2"; shift 2 ;;
     -i) USER_EXCLUDE+=("$2"); shift 2 ;;
@@ -293,6 +297,7 @@ if [[ $OUTPUT_HTML -eq 1 ]] || [[ $REALTIME -eq 1 ]] || [[ -n "$PORT" ]] || [[ -
   [[ -n "$ADDRESS" ]] && CMD+=("--addr=$ADDRESS")
   [[ -n "$PORT" ]] && CMD+=("--port=$PORT")
   [[ -n "$WS_URL" ]] && CMD+=("--ws-url=$WS_URL")
+  [[ -n "$HTML_REPORT_TITLE" ]] && CMD+=("--html-report-title=$HTML_REPORT_TITLE")
 
   echo "HTML OUTPUT: $HTML_OUTPUT"
 fi
