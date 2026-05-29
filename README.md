@@ -3,10 +3,19 @@
 [GH ISSUE](https://github.com/allinurl/goaccess/issues/1789)
 
 ## Artifacts
-
-
+[GoAccess Downloads](https://goaccess.io/download)
 
 ```
+wget -O - https://deb.goaccess.io/gnugpg.key | gpg --dearmor | sudo tee /usr/share/keyrings/goaccess.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/goaccess.gpg arch=$(dpkg --print-architecture)] https://deb.goaccess.io/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/goaccess.list
+sudo apt-get update
+sudo apt-get install goaccess
+```
+
+```
+find /usr/share/ -type f -name 'GeoLite2-Country*'
+find /var/lib/ -type f -name 'GeoLite2-Country*'
+
 wget https://github.com/maxmind/geoipupdate/releases/download/v7.1.1/geoipupdate_7.1.1_linux_amd64.deb
 dpkg -i geoipupdate_7.1.1_linux_amd64.deb
 nano /etc/GeoIP.conf
