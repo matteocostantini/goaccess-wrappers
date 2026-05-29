@@ -49,7 +49,7 @@ presets:
       - 172.16.0.0/12
 
   office:
-    include:
+    exclude:
       - 37.179.5.219
 
   machine:
