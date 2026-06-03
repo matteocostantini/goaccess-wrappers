@@ -134,6 +134,11 @@ zcat -f "$LOGS" | awk '{print $1}' | sort -u > "$IP_LIST"
 > "$OUT_COUNTRIES"
 > "$OUT_CONTINENTS"
 
+# conteggi in memoria (non influenzano i file usati da grep)
+declare -A CNT_COUNTRY
+declare -A CNT_CONTINENT
+declare -A CNT_CONTINENT_COUNTRY
+
 # ============================================================
 #  LOOP GEOIP
 # ============================================================
@@ -149,14 +154,21 @@ while read -r ip; do
     # Match paesi
     for c in "${COUNTRY_LIST[@]}"; do
         if [ "$country" = "$c" ]; then
-            echo "$c $ip" >> "$OUT_COUNTRIES"
+            # manteniamo il file con solo gli IP (usato da grep/pipe esterni)
+            echo "$ip" >> "$OUT_COUNTRIES"
+            CNT_COUNTRY["$c"]=$((CNT_COUNTRY["$c"]+1))
         fi
     done
 
     # Match continenti
     for k in "${CONTINENT_LIST[@]}"; do
         if [ "$continent" = "$k" ]; then
-            echo "$k $ip" >> "$OUT_CONTINENTS"
+            # manteniamo il file con solo gli IP (usato da grep/pipe esterni)
+            echo "$ip" >> "$OUT_CONTINENTS"
+            CNT_CONTINENT["$k"]=$((CNT_CONTINENT["$k"]+1))
+            if [ -n "$country" ]; then
+                CNT_CONTINENT_COUNTRY["$k:$country"]=$((CNT_CONTINENT_COUNTRY["$k:$country"]+1))
+            fi
         fi
     done
 
@@ -174,7 +186,7 @@ if [ -n "$COUNTRIES" ]; then
         if [ -z "${c}" ]; then
             continue
         fi
-        count=$(grep -c "^${c} " "$OUT_COUNTRIES" 2>/dev/null || true)
+        count=${CNT_COUNTRY["$c"]:-0}
         name=${COUNTRY_NAMES[$c]:-Unknown}
         printf "%-3s %-20s %d\n" "$c" "$name" "$count"
     done
@@ -185,16 +197,45 @@ echo "IP dei paesi selezionati → $OUT_COUNTRIES (tot: $(wc -l < "$OUT_COUNTRIE
 echo "IP dei continenti selezionati → $OUT_CONTINENTS (tot: $(wc -l < "$OUT_CONTINENTS"))"
 
 # ============================================================
-#  TOTALI PER CONTINENTE
+#  TOTALI PER CONTINENTE (con subtotals per paese)
 # ============================================================
 if [ -n "$CONTINENTS" ]; then
     echo "Totali per continente:"
+    cont_tmp=$(mktemp)
     for k in "${CONTINENT_LIST[@]}"; do
         if [ -z "${k}" ]; then
             continue
         fi
-        count=$(grep -c "^${k} " "$OUT_CONTINENTS" 2>/dev/null || true)
-        name=${CONTINENT_NAMES[$k]:-Unknown}
-        printf "%-3s %-20s %d\n" "$k" "$name" "$count"
+        count=${CNT_CONTINENT["$k"]:-0}
+        printf "%d %s\n" "$count" "$k" >> "$cont_tmp"
     done
+
+    if [ -s "$cont_tmp" ]; then
+        sort -nr "$cont_tmp" | while read -r cnt k; do
+            name=${CONTINENT_NAMES[$k]:-Unknown}
+            printf "%s %-20s %d\n" "$k" "$name" "$cnt"
+
+            # Subtotals per country for this continent (ordered desc)
+            echo "  Subtotals per country:"
+            tmpfile=$(mktemp)
+            for cc in "${COUNTRY_LIST[@]}"; do
+                if [ -z "${cc}" ]; then
+                    continue
+                fi
+                sub=${CNT_CONTINENT_COUNTRY["$k:$cc"]:-0}
+                if [ "$sub" -gt 0 ]; then
+                    printf "%d %s\n" "$sub" "$cc" >> "$tmpfile"
+                fi
+            done
+            if [ -s "$tmpfile" ]; then
+                sort -nr "$tmpfile" | while read -r cnt2 cc; do
+                    cname=${COUNTRY_NAMES[$cc]:-Unknown}
+                    printf "    %-3s %-20s %d\n" "$cc" "$cname" "$cnt2"
+                done
+            fi
+            rm -f "$tmpfile"
+            echo ""
+        done
+    fi
+    rm -f "$cont_tmp"
 fi
