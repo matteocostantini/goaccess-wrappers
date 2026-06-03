@@ -149,14 +149,14 @@ while read -r ip; do
     # Match paesi
     for c in "${COUNTRY_LIST[@]}"; do
         if [ "$country" = "$c" ]; then
-            echo "$ip" >> "$OUT_COUNTRIES"
+            echo "$c $ip" >> "$OUT_COUNTRIES"
         fi
     done
 
     # Match continenti
     for k in "${CONTINENT_LIST[@]}"; do
         if [ "$continent" = "$k" ]; then
-            echo "$ip" >> "$OUT_CONTINENTS"
+            echo "$k $ip" >> "$OUT_CONTINENTS"
         fi
     done
 
@@ -164,6 +164,37 @@ done < "$IP_LIST"
 
 rm "$IP_LIST"
 
+# ============================================================
+#  TOTALI PER PAESE
+# ============================================================
+if [ -n "$COUNTRIES" ]; then
+    echo "Totali per paese:"
+    for c in "${COUNTRY_LIST[@]}"; do
+        # salta voci vuote
+        if [ -z "${c}" ]; then
+            continue
+        fi
+        count=$(grep -c "^${c} " "$OUT_COUNTRIES" 2>/dev/null || true)
+        name=${COUNTRY_NAMES[$c]:-Unknown}
+        printf "%-3s %-20s %d\n" "$c" "$name" "$count"
+    done
+fi
+
 echo "Completato."
 echo "IP dei paesi selezionati → $OUT_COUNTRIES (tot: $(wc -l < "$OUT_COUNTRIES"))"
 echo "IP dei continenti selezionati → $OUT_CONTINENTS (tot: $(wc -l < "$OUT_CONTINENTS"))"
+
+# ============================================================
+#  TOTALI PER CONTINENTE
+# ============================================================
+if [ -n "$CONTINENTS" ]; then
+    echo "Totali per continente:"
+    for k in "${CONTINENT_LIST[@]}"; do
+        if [ -z "${k}" ]; then
+            continue
+        fi
+        count=$(grep -c "^${k} " "$OUT_CONTINENTS" 2>/dev/null || true)
+        name=${CONTINENT_NAMES[$k]:-Unknown}
+        printf "%-3s %-20s %d\n" "$k" "$name" "$count"
+    done
+fi
