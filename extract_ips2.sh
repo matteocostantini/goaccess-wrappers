@@ -1,41 +1,25 @@
 #!/bin/bash
 
-LOG="/var/www/domhook.matteo-costantini.it/log/access.log"
+LOG="/var/www/domhook.matteo-costantini.it/log/*"
 GEOIP="/usr/share/GeoIP/GeoLite2-Country.mmdb"
 OUTDIR="./continenti"
 
 mkdir -p "$OUTDIR"
+rm -f "$OUTDIR"/*.txt
 
-# 1. Genera JSON da GoAccess
-goaccess "$LOG" \
+# 1. Genera JSON da GoAccess con zcat
+for file in $LOG; do
+    zcat -f "$file"
+done | goaccess -c - \
   --log-format=COMBINED \
   --geoip-database="$GEOIP" \
   -o report.json \
   >/dev/null 2>&1
 
-# 2. Estrai continenti e IP
-jq -r '
-  .geolocation.data[]
-  | {continent: .continent, ips: [.items[].ip]}
-' report.json \
-| jq -s '
-  group_by(.continent)[] |
-  {
-    continent: .[0].continent,
-    ips: (map(.ips[]) | unique)
-  }
-' \
-| while read -r line; do
-    if [[ "$line" =~ \"continent\":\ \"([^\"]+)\" ]]; then
-        CONT="${BASH_REMATCH[1]}"
-        FILE="$OUTDIR/${CONT}.txt"
-        echo -n "" > "$FILE"
-    fi
-
-    if echo "$line" | grep -q '"ips"'; then
-        IPS=$(echo "$line" | sed -n 's/.*"ips":\[\([^]]*\)\].*/\1/p')
-        echo "$IPS" | tr -d '"' | tr ',' '\n' >> "$FILE"
-    fi
+# 2. Estrai paesi e IP da hosts
+jq -r '.hosts.data[] | "\(.country)|\(.data)"' report.json | while IFS='|' read -r country ip; do
+    FILE="$OUTDIR/${country}.txt"
+    echo "$ip" >> "$FILE"
 done
 
 echo "✔ File generati in $OUTDIR"
