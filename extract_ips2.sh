@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOG="/var/www/.../logs/access.log"
+LOG="/var/www/domhook.matteo-costantini.it/log/access.log"
 GEOIP="/usr/share/GeoIP/GeoLite2-Country.mmdb"
 OUTDIR="./continenti"
 
