@@ -10,13 +10,12 @@ mkdir -p "$OUTDIR"
 goaccess "$LOG" \
   --log-format=COMBINED \
   --geoip-database="$GEOIP" \
-  --geoip-city \
   -o report.json \
   >/dev/null 2>&1
 
 # 2. Estrai continenti e IP
 jq -r '
-  .GEO_LOCATION.data[]
+  .geolocation.data[]
   | {continent: .continent, ips: [.items[].ip]}
 ' report.json \
 | jq -s '
@@ -33,12 +32,8 @@ jq -r '
         echo -n "" > "$FILE"
     fi
 
-    if [[ "$line" =~ \"ips\":\ 
-
-\[(.*)\]
-
- ]]; then
-        IPS="${BASH_REMATCH[1]}"
+    if echo "$line" | grep -q '"ips"'; then
+        IPS=$(echo "$line" | sed -n 's/.*"ips":\[\([^]]*\)\].*/\1/p')
         echo "$IPS" | tr -d '"' | tr ',' '\n' >> "$FILE"
     fi
 done
