@@ -7,6 +7,8 @@
 #    ./extract_geoip.sh --list-continents
 # ============================================================
 
+# grep -f ip_countries.txt -v  -x /var/www/<site>/log/access.log 
+
 GEOIP_DB="/usr/share/GeoIP/GeoLite2-Country.mmdb"
 OUT_COUNTRIES="ip_paesi.txt"
 OUT_CONTINENTS="ip_continenti.txt"
