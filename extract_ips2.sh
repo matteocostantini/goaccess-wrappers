@@ -16,9 +16,32 @@ done | goaccess -c - \
   -o report.json \
   >/dev/null 2>&1
 
-# 2. Estrai paesi e IP da hosts
+# 2. Estrai continenti e IP da hosts
+
 jq -r '.hosts.data[] | "\(.country)|\(.data)"' report.json | while IFS='|' read -r country ip; do
     FILE="$OUTDIR/${country}.txt"
+    echo "$ip" >> "$FILE"
+done
+
+# Mappatura paese -> continente basata su codice paese
+jq -r '.hosts.data[] | "\(.country)|\(.data)"' report.json | while IFS='|' read -r country ip; do
+    # Estrai codice paese (prima della space)
+    country_code="${country%% *}"
+    
+    # Mappa codice a continente
+    case "$country_code" in
+        FR|IT|DE|ES|PT|NL|BE|PL|RO|GR|CZ|HU|SE|AT|BG|DK|FI|IE|LT|HR|SI|LU|MT|CY|LV|EE|SK) 
+            CONTINENT="EU Europe" 
+            ;;
+        US|CA|MX) 
+            CONTINENT="NA North America" 
+            ;;
+        *)
+            CONTINENT="Other"
+            ;;
+    esac
+    
+    FILE="$OUTDIR/${CONTINENT}.txt"
     echo "$ip" >> "$FILE"
 done
 
